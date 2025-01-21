@@ -1,0 +1,578 @@
+library(copykat)
+library(fgsea)
+library(msigdbr)
+library(clusterProfiler)
+library(org.Hs.eg.db)
+library(tidyr)
+library(reactome.db)
+library(ReactomePA)
+library(SingleCellExperiment)
+library(scuttle)
+library(scater)
+library(scRNAseq)
+library(ggpubr)
+library(ggsignif)
+library(writexl)
+library(tibble)
+library(EnhancedVolcano)
+library(ggrepel)
+library(tidyverse)
+library(cowplot)
+library(Matrix.utils)
+library(edgeR)
+library(Matrix)
+library(reshape2)
+library(S4Vectors)
+library(SingleCellExperiment)
+library(pheatmap)
+library(apeglm)
+library(png)
+library(DESeq2)
+library(RColorBrewer)
+library(data.table)
+library(CellChat)
+library(patchwork)
+
+#similar operation was performed for both dataset, wiith different cluster selection and defined markers
+#extract the cells in cluster 6 for endothelial cells
+SpecifiCells10 <- WhichCells(Harmony_integrate_seurat, idents = c("10"))
+SubclusterObject10 <- subset(Harmony_integrate_seurat, cells = SpecifiCells10)
+
+DefaultAssay(SubclusterObject10) <- "RNA"
+
+DotPlot(SubclusterObject10,features = "VWF", assay="SCT")
+
+
+# Normalization and Scaling before integration
+SCTSubclusterObject10 <- SCTransform(
+  SubclusterObject10,
+  vars.to.regress = c("mitoRatio"),  # Adjust if necessary
+  vst.flavor = "v2"
+)
+
+SCTSubclusterObject10 <- FindVariableFeatures(
+  SCTSubclusterObject10,  # Your Seurat object
+  assay = "SCT",  # Use SCT assay
+  selection.method = "vst",  # Method for feature selection (e.g., variance-stabilizing transformation)
+  nfeatures = 4000  # Specify the number of features to select (can be adjusted)
+)
+
+# Run PCA before integration
+SCTSubclusterObject10 <- RunPCA(SCTSubclusterObject10)
+
+SCTSubclusterObject10 <- FindNeighbors(SCTSubclusterObject10, dims = 1:40, reduction = "pca")
+SCTSubclusterObject10 <- FindClusters(SCTSubclusterObject10, resolution = 0.2, cluster.name = "unintegrated_SCTSubclusterObject10")
+
+set.seed(123456)
+
+
+SCTfiltered_seurat_MAD10 <- RunUMAP(SCTSubclusterObject10, dims = 1:40, reduction = "pca", reduction.name = "umap.unintegrated")
+
+# Visualize by batch and cell type annotation
+pJ <- DimPlot(SCTSubclusterObject10, reduction = "umap.unintegrated", group.by = "patient")
+pK <- DimPlot(SCTSubclusterObject10, reduction = "umap.unintegrated", group.by = "tissue")
+
+# Combine the plots side-by-side
+plot_grid(pJ, pK, ncol = 2) +
+  theme_minimal() +
+  labs(
+    title = "Subcluster 10 before Harmony Integraion",
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5)  # Center the title
+  )
+
+
+# Using Harmony to perform integration
+Harmony_SCTSubclusterObject10 <- RunHarmony(
+  object = SCTSubclusterObject10, 
+  reduction = "pca",
+  group.by.vars = c("tissue", "patient", "samples"),  # Pass as a vector
+  dims.use = 1:40, 
+  reduction.save = 'runharmony', 
+  plot_convergence = FALSE
+)
+
+# Find neighbors and clusters after Harmony integration
+Harmony_SCTSubclusterObject10 <- FindNeighbors(Harmony_SCTSubclusterObject10, reduction = "runharmony", dims = 1:40)
+Harmony_SCTSubclusterObject10 <- FindClusters(Harmony_SCTSubclusterObject10, resolution = 0.2, cluster.name = "runharmony_clusters")
+
+# Run UMAP after Harmony integration
+set.seed(123456)
+Harmony_SCTSubclusterObject10 <- RunUMAP(Harmony_SCTSubclusterObject10, dims = 1:40, reduction = "runharmony", reduction.name = "umap.runharmony")
+
+# Visualize by batch and tissue type
+pL <- DimPlot(Harmony_SCTSubclusterObject10, reduction = "umap.runharmony", split.by = "patient")
+pN <- DimPlot(Harmony_SCTSubclusterObject10, reduction = "umap.runharmony", group.by = "tissue")
+
+# Combine the plots side-by-side
+plot_grid(pL, pN, ncol = 2) +
+  theme_minimal() +
+  labs(
+    title = "Subcluster 10 After Harmony Integration",
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5)  # Center the title
+  )
+
+
+# Run PCA on the Seurat object after Harmony
+seurat_example_MAD10 <- RunPCA(Harmony_SCTSubclusterObject10, features = VariableFeatures(Harmony_SCTSubclusterObject10))
+
+# Access PCA results
+pca_result_MAD10 <- Harmony_SCTSubclusterObject10[["pca"]]
+head(pca_result_MAD10)
+str(pca_result_MAD10)
+
+# Calculate the variance explained by each principal component
+stdevsMAD10 <- pca_result_MAD10@stdev
+variance_explained_MAD10 <- (stdevsMAD10^2) / sum(stdevsMAD10^2) * 100
+
+# Show the variance explained by each PC
+variance_explained_MAD10
+
+# Plot variance explained and save it
+png("Harmony_variance_explained_MAD10_plot.png", width = 800, height = 600)
+
+# Calculate cumulative variance explained
+cumulative_variance_MAD10 <- cumsum(variance_explained_MAD10)
+
+# Plot the variance explained by each PC
+plot(variance_explained_MAD10, type = "b", xlab = "Principal Components", 
+     ylab = "Variance Explained (%)", 
+     main = "Variance Explained by Each Principal Component")
+
+# Add a horizontal line at 80% variance explained
+abline(h = 80, col = "red", lty = 2)
+
+# Add a vertical line at the point where cumulative variance reaches 80%
+pc_80 <- which(cumulative_variance_MAD10 >= 80)[1]
+abline(v = pc_80, col = "red", lty = 2)
+
+# Similarly, for 90%
+pc_90 <- which(cumulative_variance_MAD10 >= 90)[1]
+abline(v = pc_90, col = "blue", lty = 2)
+
+# Close the PNG device to save the file
+dev.off()
+
+
+# DimHeatmap for Subcluster 10
+DimHeatmap(Harmony_SCTSubclusterObject10, 
+           dims = 1:40, 
+           cells = 500, 
+           balanced = TRUE) +
+  ggtitle("Dimensionality Reduction Heatmap") +  # Title added in the middle
+  theme(plot.title = element_text(hjust = 0.5))  # Center the title
+
+# Printing out the most variable genes driving PCs for Subcluster 10
+print("Top 5 Most Variable Genes Driving PCs")
+print(x = Harmony_SCTSubclusterObject10[["pca"]], 
+      dims = 1:40, 
+      nfeatures = 5)
+
+# Elbow plot for Subcluster 10
+png("elbow_plot_cluster10.png", width = 800, height = 600)
+ElbowPlot(object = Harmony_SCTSubclusterObject10, 
+          ndims = 50) +
+  ggtitle("Elbow Plot for Dimensionality Selection") +
+  theme(plot.title = element_text(hjust = 0.5))  # Center the title
+dev.off()
+
+# Set seed for reproducibility
+set.seed(123456)
+
+# Apply FindClusters to Harmony_SCTSubclusterObject10 using different resolutions based on Harmony reduction
+seq <- seq(0.1, 1, by = 0.1)
+
+# Loop through different resolutions for Harmony-based clustering
+for (res in seq) {
+  # Perform clustering using Harmony reduction embeddings (ensure you're using the correct graph)
+  Harmony_SCTSubclusterObject10 <- FindClusters(
+    Harmony_SCTSubclusterObject10, 
+    resolution = res, 
+    reduction = "runharmony",   # Use harmony reduction for clustering
+    dims = 1:40              # Use the top 40 dimensions or adjust as needed
+  )
+}
+
+# View available reductions in the object
+Reductions(Harmony_SCTSubclusterObject10)
+
+# Run UMAP using Harmony reduction
+Harmony_SCTSubclusterObject10 <- RunUMAP(Harmony_SCTSubclusterObject10, 
+                                         dims = 1:40, 
+                                         reduction = "runharmony", 
+                                         reduction.name = "umap.runharmony")
+
+# View the meta data (contains the cluster labels from Harmony)
+colnames(Harmony_SCTSubclusterObject10@meta.data)
+
+# Plot the clusters by patient, tissue, and Harmony clusters
+pE <- DimPlot(Harmony_SCTSubclusterObject10, reduction = "umap.runharmony", group.by = "patient")
+pF <- DimPlot(Harmony_SCTSubclusterObject10, reduction = "umap.runharmony", group.by = "tissue")
+pG <- DimPlot(Harmony_SCTSubclusterObject10, reduction = "umap.runharmony", group.by = "seurat_clusters")  # Harmony-based clusters
+
+# Combine the plots side-by-side
+plot_grid(pE, pF, pG, ncol = 2)
+
+# Using clustree to determine the best resolution for Harmony clustering
+p1 <- clustree(Harmony_SCTSubclusterObject10, prefix = 'SCT_snn_res.') + 
+  coord_flip()  # `seurat_clusters` from Harmony
+
+# DimPlot for a specific resolution (example resolution 0.4)
+p2 <- DimPlot(Harmony_SCTSubclusterObject10, 
+              group.by = 'SCT_snn_res.0.5',  # Using `seurat_clusters` for Harmony-based clusters
+              reduction = "umap.runharmony", 
+              pt.size = 0.6, 
+              label = TRUE)
+
+# Combine the clustree and UMAP plots side by side using plot_layout
+p1 + p2 + plot_layout(widths = c(3, 1))
+
+
+# After clustree, 0.1 resolution is decided
+Harmony_SCTSubclusterObject10 <- FindNeighbors(
+  Harmony_SCTSubclusterObject10, 
+  reduction = "runharmony",  # Use the Harmony embedding for finding neighbors
+  dims = 1:40               # Adjust the number of dimensions based on your analysis
+)  
+
+Harmony_SCTSubclusterObject10 <- FindClusters(Harmony_SCTSubclusterObject10, 
+                                              resolution = 0.5, cluster.name = "runharmony_clusters10")
+Reductions(Harmony_SCTSubclusterObject10)
+# Check the names of the graphs (for verification)
+names(Harmony_SCTSubclusterObject10@graphs)
+# Plot the UMAP by tissue
+DimPlot(Harmony_SCTSubclusterObject10,
+        reduction = "umap.runharmony",
+        label = TRUE,
+        label.size = 4,
+        pt.size = 1) +  # Add the title
+  labs(x = "UMAP_2", y = "UMAP_1")
+
+# Plot the UMAP by tissue
+DimPlot(Harmony_SCTSubclusterObject10,
+        reduction = "umap.runharmony", split.by = "tissue",
+        label = TRUE,
+        label.size = 4,
+        pt.size = 1)
+
+# Plot the UMAP by patient
+DimPlot(Harmony_SCTSubclusterObject10,
+        reduction = "umap.runharmony", split.by = "patient",
+        label = TRUE,
+        label.size = 4,
+        pt.size = 1)
+colnames(Harmony_SCTSubclusterObject10@meta.data)
+colCounts(Harmony_SCTSubclusterObject10)
+
+# Identify ribosomal genes
+ribosomal_genes<-grep("RPL|^RPS", rownames(Harmony_SCTSubclusterObject10), value=TRUE)
+
+# Calculate ribosomal proportion per cell
+Harmony_SCTSubclusterObject10$ribosome_proportion <- Matrix::colSums(Harmony_SCTSubclusterObject10@assays$SCT@data[ribosomal_genes, ]) / Matrix::colSums(Harmony_SCTSubclusterObject10@assays$SCT@data)
+
+# Violin plot split by tissue type
+VlnPlot(Harmony_SCTSubclusterObject10, features = "ribosome_proportion", group.by = "seurat_clusters", split.by = "tissue") + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Feature plot split by tissue
+FeaturePlot(Harmony_SCTSubclusterObject10, features = "ribosome_proportion", split.by = "tissue", reduction = "umap.runharmony")
+
+
+
+# Plot for the patient proportion plus cluster
+HarmonySCTSubcluster10metadata <- Harmony_SCTSubclusterObject10@meta.data
+cluster10_patient_table <- table(HarmonySCTSubcluster10metadata$runharmony_clusters10, HarmonySCTSubcluster10metadata$patient)
+cluster10_patient_prop <- prop.table(cluster10_patient_table, margin = 1)  # Normalize by cluster
+
+cluster10_patient_df <- as.data.frame(cluster10_patient_prop) %>%
+  rename(Cluster = Var1, Patient = Var2, Proportion = Freq)
+
+# Adding the proportion label
+cluster10_patient_df <- cluster10_patient_df %>%
+  mutate(Label = sprintf("%.1f%%", Proportion * 100))
+
+# Plot with proportion labels and centered title
+ggplot(cluster10_patient_df, aes(x = Cluster, y = Proportion, fill = Patient)) +
+  geom_bar(stat = "identity", position = "fill") +  # Stacked bar chart
+  geom_text(
+    aes(label = Label),
+    position = position_stack(vjust = 0.5),  # Position in the middle of each stack
+    size = 3  # Adjust text size
+  ) +
+  theme_minimal() +
+  labs(
+    title = "Proportion of Patients in Each Cluster for endothelial cells",
+    x = "Cluster",
+    y = "Proportion",
+    fill = "Patient"
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5)  # Center the title
+  )
+
+# Generate the Proportion for tissue
+cluster10_tissue_table <- table(HarmonySCTSubcluster10metadata$runharmony_clusters10, HarmonySCTSubcluster10metadata$tissue)
+cluster10_tissue_prop <- prop.table(cluster10_tissue_table, margin = 1)  # Normalize by cluster
+cluster10_tissue_df <- as.data.frame(cluster10_tissue_prop) %>%
+  rename(Cluster = Var1, Tissue = Var2, Proportion = Freq)
+
+# Add absolute counts for labeling
+cluster10_tissue_df <- cluster10_tissue_df %>%
+  mutate(Label = sprintf("%.1f%%", Proportion * 100))  # Convert to percentage
+
+ggplot(cluster10_tissue_df, aes(x = Cluster, y = Proportion, fill = Tissue)) +
+  geom_bar(stat = "identity", position = "fill") +  # Stacked bar chart
+  geom_text(
+    aes(label = Label),
+    position = position_stack(vjust = 0.5),  # Position in the middle of each stack
+    size = 3  # Adjust text size
+  ) +
+  theme_minimal() +
+  labs(
+    title = "Proportion of Tissues in Each Cluster",
+    x = "Cluster",
+    y = "Proportion",
+    fill = "Tissue"
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5)  # Center the title
+  )
+
+# Determine metrics to plot present in seurat_integrated@meta.data
+FeaturePlot(Harmony_SCTSubclusterObject10, 
+            reduction = "umap.runharmony", 
+            features = c("nUMI", "nGene","mitoRatio"),
+            pt.size = 1.5, 
+            order = TRUE,
+            min.cutoff = 'q10',
+            label = TRUE, ncol = 3)
+Reductions(Harmony_SCTSubclusterObject10)
+
+# Extract principal components data
+pc_data10 <- as.data.frame(Harmony_SCTSubclusterObject10@reductions$pca@cell.embeddings)
+pc_data10$ident <- Idents(Harmony_SCTSubclusterObject10)  # Add cluster information
+rownames(pc_data10) <- rownames(Harmony_SCTSubclusterObject10@meta.data)
+
+# Defining the information in the seurat object of interest
+columns10 <- c(paste0("PC_", 1:40),
+               "ident",
+               "umaprunharmony_1", "umaprunharmony_2")
+# Extract UMAP embeddings
+umap_data10 <- Embeddings(Harmony_SCTSubclusterObject10, reduction = "umap.runharmony")
+umap_data10 <- umap_data10[rownames(pc_data10), ]  # Align UMAP data with the cells in pc_data10
+
+# Now assign the UMAP embeddings to the pc_data10 dataframe
+pc_data10$umaprunharmony_1 <- umap_data10[, 1]  # UMAP 1
+pc_data10$umaprunharmony_2 <- umap_data10[, 2]  # UMAP 2
+
+# Group by cluster and compute UMAP center for cluster labels
+umap_label10 <- pc_data10 %>%
+  group_by(ident) %>%
+  dplyr::summarise(
+    x = mean(umaprunharmony_1),  # Fix syntax error here
+    y = mean(umaprunharmony_2)
+  )
+
+# Plot UMAP with PCs
+plot_list <- map(paste0("PC_", 1:40), function(pc) {
+  ggplot(pc_data10, aes(umaprunharmony_1, umaprunharmony_2)) +
+    geom_point(aes_string(color = pc), alpha = 0.7) +
+    scale_color_gradient(guide = FALSE, low = "grey90", high = "blue") +
+    geom_text(data = umap_label10, aes(label = ident, x, y)) +
+    ggtitle(pc)
+})
+
+# Display the plots using plot_grid
+plot_grid(plotlist = plot_list)
+
+print(Harmony_SCTSubclusterObject10[["pca"]], dims = 1:40, nfeatures = 5)
+
+# Initialize an empty list to store results
+cluster10_results_list <- list()
+
+# Run FindConservedMarkers() for each cluster and handle errors
+for (cluster in 0:10) {
+  print(paste("Processing Cluster:", cluster))
+  cluster10_conserved_markers <- tryCatch({
+    FindConservedMarkers(
+      Harmony_SCTSubclusterObject10,
+      ident.1 = cluster,
+      grouping.var = c("tissue","patient"),
+      only.pos = TRUE,
+      logfc.threshold = 0.25,
+      assay = "SCT"
+    ) %>%
+      rownames_to_column(var = "gene") %>%
+      cbind(cluster_id = cluster, .)
+  }, error = function(e) {
+    print(paste("Error in Cluster:", cluster, "->", e$message))
+    NULL
+  })
+  cluster10_results_list[[as.character(cluster)]] <- cluster10_conserved_markers
+}
+
+# Combine all the results into a single dataframe
+final_conserved_markers10_df <- bind_rows(cluster10_results_list, .id = "cluster_id")
+
+# Check if any clusters failed
+print(final_conserved_markers10_df)
+
+# View the final dataframe
+View(final_conserved_markers10_df)
+head()
+
+# Extract top 10 markers per cluster
+top10_Endo <- final_conserved_markers10_df %>% 
+  mutate(
+    avg_fc = if_else(
+      !is.na(Normal_avg_log2FC), 
+      (Normal_avg_log2FC + Tumor_avg_log2FC) / 2,  # Calculate average if both are present
+      Tumor_avg_log2FC  # Use Tumor_avg_log2FC if Normal_avg_log2FC is missing
+    )
+  ) %>% 
+  group_by(cluster_id) %>% 
+  top_n(n = 10, wt = avg_fc) 
+
+# Visualize top 10 markers per cluster
+View(top10_Endo)
+
+# Extract the top 10 marker genes
+top10_Endo_gene <- top10_Endo$gene
+
+Reductions(Harmony_SCTSubclusterObject10)
+
+
+# Generate heatmap using top10_Endo_gene
+DoHeatmap(
+  Harmony_SCTSubclusterObject10, 
+  features = top10_Endo_gene, 
+  group.by = "runharmony_clusters10",  # Adjust if clusters are stored differently
+  label = TRUE, 
+  size = 3  # Adjust size of labels
+)
+?FindAllMarkers
+MarkerCluster10 <- FindAllMarkers(object = Harmony_SCTSubclusterObject10, 
+                                  only.pos = TRUE,
+                                  logfc.threshold = 0.25,
+                                  min.pct = 0.25)
+
+
+write.xlsx(MarkerCluster10,"AllclustermarkerEndo.xlsx")
+
+
+de_resultsall10 <- FindMarkers(
+  object = Harmony_SCTSubclusterObject10, 
+  ident.1 = "Tumor",   # Group 1: Tumor
+  ident.2 = "Normal",  # Group 2: Normal
+  group.by = "tissue",  # The grouping factor
+  logfc.threshold = 0.25,   # Adjust the log fold-change threshold
+  min.pct = 0.2,           # Minimum percent of cells expressing the gene
+  test.use = "wilcox"      # Statistical test (Wilcoxon rank-sum test by default)
+)
+
+print(de_resultsall10)
+de_resultsall10$gene <-rownames(de_resultsall10)
+write.xlsx(de_resultsall10,"allendode.xlsx",rowwNames=TRUE)
+
+# Volcano plot
+EnhancedVolcano(de_results10,
+                lab = rownames(de_results10),
+                x="avg_log2FC",
+                y="p_val_adj",
+                pCutoff = 0.05,
+                FCcutoff = 0.5,
+)
+
+# Sort the DE results by p-value in ascending order
+# Add gene names as a new column
+de_results10_with_genes <- de_results10
+de_results10_with_genes$Gene <- rownames(de_results10_with_genes)
+
+# Sort the DE results by adjusted p-value
+de_results10_sorted <- de_results10_with_genes[order(de_results10_with_genes$p_val_adj), ]
+
+# Select the top 50 genes
+top_50_de_results10 <- de_results10_sorted[1:50, ]
+write_xlsx(top_50_de_results10, "Gastric cancer endothelial TVN DE_10.xlsx")
+top_50_gene_names <- rownames(top_50_de_results10)
+DotPlot(Harmony_SCTSubclusterObject10, features = top_50_gene_names, 
+        group.by = "tissue", assay = "SCT") + 
+  coord_flip()
+
+# Plot a heatmap of top DE genes
+DoHeatmap(Harmony_SCTSubclusterObject6, features = top_genesTvsN6) + 
+  scale_fill_gradientn(colors = c("blue", "white", "red"))
+
+# Access normalized data
+gene_expression_dataN <- subset_seuratN@assays$SCT@data  # Or use @assays$SCT@data if using SCTransform
+
+# Rank genes by their average log2 fold change (if comparing between clusters or conditions)
+avg_logFCN <- rowMeans(gene_expression_dataN)
+ranked_genesN <- sort(avg_logFCN, decreasing = TRUE)
+
+library(clusterProfiler)
+
+# Example: Using MSigDB gene sets (or custom gene sets)
+gsea_resultsN <- gseGO(geneList = ranked_genesN, 
+                       OrgDb = org.Hs.eg.db, 
+                       ont = "BP",  # You can choose other ontologies like "MF" or "CC"
+                       keyType = "SYMBOL", 
+                       pvalueCutoff = 0.05)
+
+# View the GSEA results
+summary(gsea_resultsN)
+
+# Subset the Seurat object for cluster 0 and tissue type "Tumor"
+subset_seuratT <- subset(MuralSeurat, tissue == "Tumor")
+
+# Access normalized data
+gene_expression_dataT <- subset_seuratT@assays$SCT@data  # Or use @assays$SCT@data if using SCTransform
+
+# Rank genes by their average log2 fold change (if comparing between clusters or conditions)
+avg_logFCT <- rowMeans(gene_expression_dataT)
+ranked_genesT <- sort(avg_logFCT, decreasing = TRUE)
+
+
+# Example: Using MSigDB gene sets (or custom gene sets)
+gsea_resultsT <- gseGO(geneList = ranked_genesT, 
+                       OrgDb = org.Hs.eg.db, 
+                       ont = "BP",  # You can choose other ontologies like "MF" or "CC"
+                       keyType = "SYMBOL", 
+                       pvalueCutoff = 0.05)
+
+library(patchwork)
+
+# Create the individual dotplots
+dotplot_normal1 <- dotplot(gsea_resultsN, x="NES", 
+                          showCategory = 20) + 
+  ggtitle("Normal") +
+  theme(plot.title = element_text(hjust = 0.5)) 
+dotplot_tumor1 <- dotplot(gsea_resultsT,  x="NES",
+                         showCategory = 20) + 
+  ggtitle("Tumor") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+# Combine the plots with titles
+combined_plot1 <- dotplot_normal1 + dotplot_tumor1
+
+# Display the combined plot
+print(combined_plot1)
+
+# Assuming your Seurat object is named 'seurat_obj'
+cell_numbers <- table(Harmony_SCTSubclusterObject10$NewClusterLabel, Harmony_SCTSubclusterObject10$tissue)
+
+# Convert to a data frame for easy visualization
+cell_numbers_df <- as.data.frame(cell_numbers)
+
+# View the cell counts
+print(cell_numbers_df)
+
+# Create a bar plot with cell numbers marked
+ggplot(cell_numbers_df, aes(x = Var1, y = Freq, fill = Var2)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.9)) +
+  geom_text(aes(label = Freq), position = position_dodge(width = 0.9), vjust = -0.5) +
+  labs(x = "Cluster", y = "Cell Number", fill = "Tissue") +
+  theme_minimal()
