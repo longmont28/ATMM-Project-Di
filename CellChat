@@ -1,0 +1,363 @@
+reticulate::py_install("umap-learn")
+
+muralNormal<-subset(MuralSeurat, tissue=="Normal")
+muralTumor<-subset(MuralSeurat, tissue=="Tumor")
+endothelialNormal<-subset(Harmony_SCTSubclusterObject10, tissue=="Normal")
+endothelialTumor<-subset(Harmony_SCTSubclusterObject10, tissue=="Tumor")
+
+Normal_combine<-merge(muralNormal,y=endothelialNormal,add.cell.ids=c("NormalMural","NormalEndothelial"))
+Tumor_combine<-merge(muralTumor,y=endothelialTumor,add.cell.ids=c("TumorMural","TumorEndothelial"))
+
+Normaldata.input <- Normal_combine[["SCT"]]@data
+Tumordata.input <- Tumor_combine[["SCT"]]@data
+
+Normallabels <- Seurat::Idents(Normal_combine)
+Tumorlabels <- Seurat::Idents(Tumor_combine)
+
+Normalmeta <- data.frame(labels = Normallabels, row.names = names(Normallabels))
+Tumormeta <- data.frame(labels = Tumorlabels, row.names = names(Tumorlabels))
+
+Normalcellchat <- createCellChat(object = Normaldata.input,
+                                 meta = Normalmeta,
+                                 group.by = "labels")
+
+Tumorcellchat <- createCellChat(object = Tumordata.input,
+                                meta = Tumormeta,
+                                group.by = "labels")
+
+Ncellchat <- createCellChat(object = Normal_combine, group.by = "ident", assay = "SCT")
+Tcellchat <- createCellChat(object = Tumor_combine, group.by = "ident", assay = "SCT")
+
+CellChatDB <- CellChatDB.human
+showDatabaseCategory(CellChatDB)
+dplyr::glimpse(CellChatDB$interaction)
+
+CellChatDB.use <- CellChatDB
+
+
+Normalcellchat@DB <- CellChatDB.use
+Normalcellchat <- subsetData(Normalcellchat)
+Tumorcellchat@DB <- CellChatDB.use
+Tumorcellchat <- subsetData(Tumorcellchat)
+Tcellchat@DB <- CellChatDB.use
+Tcellchat <- subsetData(Tumorcellchat)
+
+future::plan("multisession", workers = 4)
+Normalcellchat <- identifyOverExpressedGenes(Normalcellchat)
+Tumorcellchat <- identifyOverExpressedGenes(Tumorcellchat)
+Tcellchat <- identifyOverExpressedGenes(Tumorcellchat)
+
+Normalcellchat  <- identifyOverExpressedInteractions(Normalcellchat)
+Tumorcellchat  <- identifyOverExpressedInteractions(Tumorcellchat)
+
+computeAveExpr(Normalcellchat, features = c("CXCL12","CXCR4"), type = "triMean")
+computeAveExpr(Normalcellchat, features = c("CXCL12","CXCR4"), type = "truncatedMean", trim = 0.01)
+computeAveExpr(Tumorcellchat, features = c("CXCL12","CXCR4"), type = "triMean")
+computeAveExpr(Tumorcellchat, features = c("CXCL12","CXCR4"), type = "truncatedMean", trim = 0.01)
+?computeCommunProb
+Normalcellchat <- computeCommunProb(Normalcellchat, type = "truncatedMean",
+                                    trim = 0.01, raw.use = TRUE)
+Tumorcellchat <- computeCommunProb(Tumorcellchat, type = "truncatedMean",
+                                   trim = 0.01, raw.use = TRUE)
+Tcellchat <- computeCommunProb(Tumorcellchat, type = "truncatedMean",
+                               trim = 0.01, raw.use = TRUE)
+?filterCommunication
+Normalcellchat <- filterCommunication(Normalcellchat, min.cells = 1)
+Tumorcellchat <- filterCommunication(Tumorcellchat, min.cells = 3)
+?filterCommunication
+Normalcellchat <- computeCommunProbPathway(Normalcellchat)
+Tumorcellchat <- computeCommunProbPathway(Tumorcellchat)
+
+Normalcellchat <- aggregateNet(Normalcellchat)
+Tumorcellchat <- aggregateNet(Tumorcellchat)
+
+saveRDS(Normalcellchat, file = "Normalcellchat_prostate_LS.rds")
+saveRDS(Tumorcellchat, file = "Tumorcellchat_prostate_LS.rds")
+
+
+pathways.show.all <- Normalcellchat@netP$pathways
+Tumorpathways.show.all <- Tumorcellchat@netP$pathways
+pathways.show <- c("VEGF", "ANGPT", "NOTCH", "PDGF", "FGF", "COLLAGEN",
+                   "LAMININ", "SELE", "VCAM","THBS")
+pathways.show.all
+pathways.show2<- c("ACTIVIN","HSPG","IL1","IL6","TGFb")
+
+vertex.receiver = seq(1,3)
+netVisual_aggregate(Normalcellchat, signaling = pathways.show, layout = "hierarchy", 
+                    vertex.receiver = vertex.receiver)
+netVisual_aggregate(Tumorcellchat, signaling = pathways.show, layout = "hierarchy", 
+                    vertex.receiver = vertex.receiver)
+netVisual_aggregate(Normalcellchat, signaling = pathways.show.all, layout = "hierarchy", 
+                    vertex.receiver = vertex.receiver)
+netVisual_aggregate(Tumorcellchat, signaling = Tumorpathways.show.all, layout = "hierarchy", 
+                    vertex.receiver = vertex.receiver)
+
+par(mfrow=c(1,1))
+group.MuralcellType <- c(rep("SMC", 4), rep("pericyte", 4), rep("SMC-like pericyte", 4))
+names(group.MuralcellType) <- levels(Normalcellchat@idents)
+
+netVisual_chord_cell(Normalcellchat, signaling = pathways.show.all, group = group.MuralcellType,
+                     title.name = paste0(pathways.show.all, " signaling network"))
+netVisual_aggregate(Normalcellchat, signaling = pathways.show.all, layout = "chord")
+
+probpathways.show.all <- rownames(Normalcellchat@netP$prob)
+Normalcellchat@net$weight
+
+par(mfrow=c(1,1))
+
+netVisual_heatmap(
+  Normalcellchat,
+  signaling = pathways.show.all,
+  measure = "weight",
+  color.heatmap = "Reds",
+  font.size.title = 15,
+  font.size = 8,
+  title.name = "Heatmap of Pathway Interactions in Normal Tissue",
+  sources.use = c("SMC", "pericyte", "SMC-like pericyte","Endo 1", "Endo 2", "Endo 3", "Endo 4"),
+  targets.use = c("SMC", "pericyte", "SMC-like pericyte","Endo 1", "Endo 2", "Endo 3", "Endo 4"),
+  remove.isolate = TRUE
+)
+
+netVisual_heatmap(
+  Tumorcellchat,
+  signaling = Tumorpathways.show.all,
+  measure = "weight",
+  color.heatmap = "Reds",
+  font.size.title = 15,
+  title.name = "Heatmap of Pathway Interactions in Normal Tissue",
+  sources.use = c("SMC", "pericyte", "SMC-like pericyte","Endo 1", "Endo 2", "Endo 3", "Endo 4"),
+  targets.use = c("SMC", "pericyte", "SMC-like pericyte","Endo 1", "Endo 2", "Endo 3", "Endo 4"),
+  remove.isolate = TRUE
+)
+
+netVisual_heatmap(
+  Normalcellchat,
+  signaling = pathways.show,
+  measure = "weight",
+  color.heatmap = "Reds",
+  font.size.title = 15,
+  title.name = "Heatmap of Pathway Interactions in Normal Tissue",
+  sources.use = c("SMC", "pericyte", "SMC-like pericyte","Endo 1", "Endo 2", "Endo 3", "Endo 4"),
+  targets.use = c("SMC", "pericyte", "SMC-like pericyte","Endo 1", "Endo 2", "Endo 3", "Endo 4"),
+  remove.isolate = TRUE
+)
+
+netVisual_heatmap(
+  Tumorcellchat,
+  signaling = pathways.show,
+  measure = "weight",
+  color.heatmap = "Reds",
+  font.size.title = 15,
+  title.name = "Heatmap of Pathway Interactions in Tormal Tissue",
+  sources.use = c("SMC", "pericyte", "SMC-like pericyte","Endo 1", "Endo 2", "Endo 3", "Endo 4"),
+  targets.use = c("SMC", "pericyte", "SMC-like pericyte","Endo 1", "Endo 2", "Endo 3", "Endo 4"),
+  remove.isolate = TRUE
+)
+
+netAnalysis_contribution(Normalcellchat, signaling = pathways.show)
+netAnalysis_contribution(Tumorcellchat, signaling = pathways.show)
+netAnalysis_contribution(Normalcellchat, signaling = pathways.show.all)
+netAnalysis_contribution(Tumorcellchat, signaling = Tumorpathways.show.all)
+
+netVisual_bubble(Normalcellchat, sources.use = c("SMC", "pericyte", "SMC-like pericyte",
+                                                 "Endo 1", "Endo 2", "Endo 3", "Endo 4"), 
+                 targets.use = c("SMC", "pericyte", "SMC-like pericyte",
+                                 "Endo 1", "Endo 2", "Endo 3", "Endo 4"), 
+                 signaling = c(pathways.show), remove.isolate = FALSE)
+netVisual_bubble(Tumorcellchat, sources.use = c("SMC", "pericyte", "SMC-like pericyte",
+                                                "Endo 1", "Endo 2", "Endo 3", "Endo 4"), 
+                 targets.use = c("SMC", "Pericyte", "SMC-like pericyte",
+                                 "Endo 1", "Endo 2", "Endo 3", "Endo 4"), 
+                 signaling = c(pathways.show), remove.isolate = FALSE)
+
+netVisual_bubble(Tumorcellchat, sources.use = c("pericyte", "SMC-like pericyte",
+                                                "Endo 1", "Endo 2", "Endo 3", "Endo 4"), 
+                 targets.use = c("SMC", "pericyte", "SMC-like pericyte",
+                                 "Endo 1", "Endo 2", "Endo 3", "Endo 4"), 
+                 signaling = c(pathways.show), remove.isolate = FALSE)
+
+NormalpairLR.use <- extractEnrichedLR(Normalcellchat, signaling = pathways.show)
+netVisual_bubble(Normalcellchat, sources.use = c("SMC", "pericyte", "SMC-like pericyte",
+                                                 "Endo 1", "Endo 2", "Endo 3", "Endo 4")
+                 , targets.use = c("SMC", "pericyte", "SMC-like pericyte",
+                                   "Endo 1", "Endo 2", "Endo 3", "Endo 4"),
+                 pairLR.use = NormalpairLR.use, remove.isolate = TRUE)
+
+pdf("chord_gene_plot.pdf", width = 12, height = 12)
+netVisual_chord_gene(
+  Normalcellchat,
+  sources.use = c("SMC", "pericyte", "SMC-like pericyte",
+                  "Endo 1", "Endo 2", "Endo 3", "Endo 4"),
+  targets.use = c("SMC", "pericyte", "SMC-like pericyte",
+                  "Endo 1", "Endo 2", "Endo 3", "Endo 4"),
+  slot.name = "netP",
+  legend.pos.x = 10,
+  lab.cex = 0.5
+)
+dev.off()
+
+pdf("Tumorchord_gene_plot.pdf", width = 12, height = 12)
+netVisual_chord_gene(
+  Tumorcellchat,
+  sources.use = c("SMC", "pericyte", "SMC-like pericyte",
+                  "Endo 1", "Endo 2", "Endo 3", "Endo 4"),
+  targets.use = c("SMC", "pericyte", "SMC-like pericyte",
+                  "Endo 1", "Endo 2", "Endo 3", "Endo 4"),
+  slot.name = "netP",
+  small.gap = 0.1,
+  big.gap = 0.01,
+  legend.pos.x = 10,
+  lab.cex = 0.08
+)
+dev.off()
+?netVisual_chord_gene
+"VEGF", "ANGPT", "NOTCH", "PDGF", "FGF", "CDH5", "COLLAGEN",
+"LAMININ", "SELE", "VCAM","APP"
+
+Normalcellchat <- netAnalysis_computeCentrality(Normalcellchat, slot.name = "netP")
+Tumorcellchat <- netAnalysis_computeCentrality(Tumorcellchat, slot.name = "netP")
+
+netAnalysis_signalingRole_network(Normalcellchat, signaling = c("LAMININ"), width = 8, height = 2.5, font.size = 10)
+netAnalysis_signalingRole_network(Tumorcellchat, signaling = c("LAMININ"), width = 8, height = 2.5, font.size = 10)
+
+netAnalysis_signalingRole_scatter(Normalcellchat)
+netAnalysis_signalingRole_scatter(Tumorcellchat)
+
+ht1 <- netAnalysis_signalingRole_heatmap(Normalcellchat, pattern = "outgoing")
+ht1
+ht2 <- netAnalysis_signalingRole_heatmap(Tumorcellchat, pattern = "outgoing")
+ht1
+ht2
+
+ht3 <- netAnalysis_signalingRole_heatmap(Normalcellchat, pattern = "incoming")
+ht3
+ht4 <- netAnalysis_signalingRole_heatmap(Tumorcellchat, pattern = "incoming")
+ht4
+ht3+ht4
+
+use_python("C:/Users/diyu6/anaconda3/envs/cellchat/python.exe")
+
+Normalcellchat <- computeNetSimilarity(Normalcellchat, type = "functional")
+Tumorcellchat <- computeNetSimilarity(Tumorcellchat, type = "functional")
+
+# Suppress future warnings from Python
+reticulate::py_run_string("import warnings; warnings.filterwarnings('ignore', category=FutureWarning)")
+plan("multisession")
+plan("multicore")
+plan
+
+Normalcellchat <- netEmbedding(Normalcellchat, type = "functional")
+Tumorcellchat <- netEmbedding(Tumorcellchat, type = "functional")
+
+Normalcellchat <- netClustering(Normalcellchat, type = "functional")
+
+netVisual_embedding(Normalcellchat , type = "functional", label.size = 3.5)
+
+# Add group labels to the metadata of each CellChat object
+Normalcellchat@meta$group <- "Normal"
+Tumorcellchat@meta$group <- "Tumor"
+pathways.show.all
+Tumorpathways.show.all
+object.list <- list(Normal = Normalcellchat, Tumor = Tumorcellchat)
+cellchat <- mergeCellChat(object.list, add.names = names(object.list),cell.prefix = TRUE)
+
+gg1 <- compareInteractions(cellchat, show.legend = F, group = c(1,2))
+gg1
+
+gg2 <- compareInteractions(cellchat, show.legend = F, group = c(1,2), measure = "weight")
+gg2
+
+netVisual_diffInteraction(cellchat, weight.scale = T)
+
+netVisual_diffInteraction(cellchat, weight.scale = T, measure = "weight")
+
+netVisual_heatmap(cellchat)
+
+netVisual_heatmap(cellchat, measure = "weight")
+
+weight.max <- getMaxWeight(object.list, attribute = c("idents","count"))
+
+par(mfrow = c(1,2), xpd=TRUE)
+for (i in 1:length(object.list)) {
+  netVisual_circle(object.list[[i]]@net$count, weight.scale = T,
+                   edge.weight.max = weight.max[2],
+                   edge.width.max = 12, 
+                   title.name = paste0("Number of interactions - ", names(object.list)[i]))
+}  
+
+num.link <- sapply(object.list, function(x) {rowSums(x@net$count) + colSums(x@net$count)-diag(x@net$count)})
+weight.MinMax <- c(min(num.link), max(num.link))
+
+gg <- list()
+for (i in 1:length(object.list)) {
+  gg[[i]] <- netAnalysis_signalingRole_scatter(object.list[[i]], title = names(object.list)[i], weight.MinMax = weight.MinMax)+xlim(0,6)+ylim(0,5)
+}
+patchwork::wrap_plots(plots = gg)+xlim(0,6)+ylim(0,6)
+
+
+
+rankNet(cellchat, slot.name = "netP",
+        mode = "comparison", measure = "weight",
+        sources.use = NULL, targets.use = NULL, stacked = T, do.stat = FALSE)
+
+
+rankNet(cellchat, mode = "comparison", measure = "weight", stacked = T, do.stat = TRUE)
+
+rankNet(cellchat, slot.name = "net", mode = "comparison", 
+        measure = "weight", stacked = T, do.stat = TRUE)
+
+rankNet(cellchat, mode = "comparison", measure = "weight", stacked = F, do.stat = TRUE)
+A<-rankNet(cellchat, mode = "comparison", measure = "weight", stacked = F, do.stat = TRUE)
+A
+?rankNet
+library(ComplexHeatmap)
+
+pathway.union <- union(object.list[[1]]@netP$pathways, object.list[[2]]@netP$pathways)
+
+ht1 = netAnalysis_signalingRole_heatmap(object.list[[1]], pattern = "outgoing", 
+                                        signaling = pathways.show2, title = names(object.list)[1],
+                                        width = 5, height = 6)
+ht1 = netAnalysis_signalingRole_heatmap(object.list[[2]], pattern = "outgoing",
+                                        signaling = pathways.show2,
+                                        title = names(object.list)[2], width = 5, height = 6)
+ht2 = netAnalysis_signalingRole_heatmap(object.list[[2]], pattern = "incoming",
+                                        signaling = pathways.show2,
+                                        title = names(object.list)[2], width = 5, height = 6)
+ht2
+draw(ht1 + ht2, ht_gap = unit(0.5, "cm"))
+
+library(reshape2)
+weight_df <- melt(weight_matrix)
+colnames(weight_df) <- c("Source", "Target", "Weight")
+library(ggplot2)
+ggplot(weight_df, aes(x = Source, y = Target, fill = Weight)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = round(Weight, 2)), color = "black", size = 4) +
+  scale_fill_gradientn(colors = c("#f7fbff", "#c6dbef", "#6baed6", "#2171b5")) + # Soft Blues
+  theme_minimal(base_size = 15) +
+  theme(
+    axis.text.x = element_text(angle = 45,color = "black", hjust = 1),
+    axis.text.y = element_text(color = "black", hjust = 1),
+  ) +
+  labs(title = "Pathway Interactions Heatmap", fill = "Weight")
+
+weight_matrix_tumor <- Tumorcellchat@net$weight
+
+# Convert to a data frame
+library(reshape2)
+weight_df_tumor <- melt(weight_matrix_tumor)
+colnames(weight_df_tumor) <- c("Source", "Target", "Weight")
+
+# Create the heatmap using ggplot2
+library(ggplot2)
+ggplot(weight_df_tumor, aes(x = Source, y = Target, fill = Weight)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = round(Weight, 2)), color = "black", size = 4) +
+  scale_fill_gradientn(colors = c("#f7fbff", "#c6dbef", "#6baed6", "#2171b5")) +  # Soft Blues Palette
+  theme_minimal(base_size = 15) +
+  theme(
+    axis.text.x = element_text(angle = 45, color = "black", hjust = 1),
+    axis.text.y = element_text(color = "black", hjust = 1)
+  ) +
+  labs(title = "Pathway Interactions Heatmap - Tumor", fill = "Weight")
+
