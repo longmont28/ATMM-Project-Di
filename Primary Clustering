@@ -1,0 +1,246 @@
+library(RColorBrewer)
+library(pheatmap)
+library(viridisLite)
+library(backports)
+library(patchwork)
+library(clustree)
+library(GenomeInfoDb)
+library(celldex)
+library(purrr)
+library(tidyverse)
+library(ggrepel)
+library(magrittr)
+library(Seurat)
+library(sp)
+library(SeuratObject)
+library(readr)
+library(pkgconfig)
+library(Seurat)
+library(tidyverse)
+library(RCurl)
+library(cowplot)
+library(dplyr)
+library(magrittr)
+library(ggplot2)
+library(EnhancedVolcano)
+
+# Run PCA on the Seurat object
+seurat_example_MAD <- RunPCA(Harmony_integrate_seurat, features = VariableFeatures(Harmony_integrate_seurat))
+
+
+# To view the PCA results
+
+# Access PCA results (stored in the Seurat object)
+pca_result_MAD <- Harmony_integrate_seurat[["pca"]]
+head(pca_result_MAD)
+str(pca_result_MAD)
+stdevsMAD <- pca_result_MAD@stdev
+# Calculate variance explained
+variance_explained_MAD <- (stdevsMAD^2) / sum(stdevsMAD^2) * 100
+
+
+# Show the variance explained by each PC
+variance_explained_MAD
+
+# Set up PNG device with the desired width and height in pixels
+png("Harmony_variance_explained_MAD_plot.png", width = 800, height = 600)
+
+# Assuming you have already calculated the variance explained by each PC
+# Let's calculate cumulative variance explained
+cumulative_variance_MAD <- cumsum(variance_explained_MAD)  # Cumulative sum of variance explained
+
+# Plot the variance explained by each PC
+plot(variance_explained_MAD, type = "b", xlab = "Principal Components", 
+     ylab = "Variance Explained (%)", 
+     main = "Variance Explained by Each Principal Component")
+
+# Add a horizontal line at 80% variance explained
+abline(h = 80, col = "red", lty = 2)  # Add a line at 80%
+
+# Optionally, add a horizontal line at 90% variance explained
+abline(h = 90, col = "blue", lty = 2)  # Add a line at 90%
+
+# Alternatively, to add a vertical line at the point where cumulative variance reaches 80%:
+pc_80 <- which(cumulative_variance_MAD >= 80)[1]  # Find the PC where cumulative variance first exceeds 80%
+abline(v = pc_80, col = "red", lty = 2)
+
+# Similarly, for 90%
+pc_90 <- which(cumulative_variance_MAD >= 90)[1]  # Find the PC where cumulative variance first exceeds 90%
+abline(v = pc_90, col = "blue", lty = 2)
+
+# Close the PNG device to save the file
+dev.off()
+
+DimHeatmap(Harmony_integrate_seurat, 
+           dims = 1:20, 
+           cells = 500, 
+           balanced = TRUE) +
+  ggtitle("Dimensionality Reduction Heatmap") +  # Title added in the middle
+  theme(plot.title = element_text(hjust = 0.5))  # Center the title
+
+# Printing out the most variable genes driving PCs
+print("Top 5 Most Variable Genes Driving PCs")
+print(x = Harmony_integrate_seurat[["pca"]], 
+      dims = 1:25, 
+      nfeatures = 5)
+
+# Plot the elbow plot with a title
+ElbowPlot(object = Harmony_integrate_seurat, 
+          ndims = 40) +
+  ggtitle("Elbow Plot for Dimensionality Selection") +  # Title added in the middle
+  theme(plot.title = element_text(hjust = 0.5))  # Center the title
+set.seed(123456)
+#Apply FindCluster to seurat_integrated_MAD using different resolution
+seq <- seq(0.1, 1, by = 0.1)
+# Loop through different resolutions for Harmony-based clustering
+for (res in seq) {
+  # Perform clustering using Harmony reduction embeddings (ensure you're using the correct graph)
+  Harmony_integrate_seurat <- FindClusters(
+    Harmony_integrate_seurat, 
+    resolution = res, 
+    reduction = "runharmony",   # Use harmony reduction for clustering
+    dims = 1:25              # Use the top 20 dimensions or adjust as needed
+  )
+}
+Reductions(Harmony_integrate_seurat)
+# Run UMAP using Harmony reduction
+Harmony_integrate_seurat <- RunUMAP(Harmony_integrate_seurat, 
+                                    dims = 1:25, 
+                                    reduction = "runharmony", 
+                                    reduction.name = "umap.runharmony")
+
+# View the meta data (contains the cluster labels from Harmony)
+colnames(Harmony_integrate_seurat@meta.data)
+
+# Plot the clusters by patient, tissue, and Harmony clusters
+pE <- DimPlot(Harmony_integrate_seurat, reduction = "umap.runharmony", group.by = "patient")
+pF <- DimPlot(Harmony_integrate_seurat, reduction = "umap.runharmony", group.by = "tissue")
+pG <- DimPlot(Harmony_integrate_seurat, reduction = "umap.runharmony", group.by = "seurat_clusters")  # Harmony-based clusters
+
+# Combine the plots side-by-side
+plot_grid(pE, pF, pG, ncol = 2)
+
+###Methods to design the best resolution
+#Using clustree to determine the best resolution for clustering
+p1 <- clustree(Harmony_integrate_seurat, prefix = 'SCT_snn_res.') + coord_flip()
+p2 <- DimPlot(Harmony_integrate_seurat, group.by = 'SCT_snn_res.0.5',
+              reduction = "umap.runharmony",pt.size = 0.5, label = TRUE)
+p1 + p2 + plot_layout(widths = c(3, 1))
+
+#After clustree, 0.1 resolution is decided
+Harmony_integrate_seurat <- FindClusters(Harmony_integrate_seurat, resolution = 0.5,
+                                         cluster.name = "runharmony_clusters")
+
+
+#Generate the Porportion for tissue
+cluster_tissue_table <- table(metadata$combined_clusters, metadata$tissue)
+cluster_tissue_prop <- prop.table(cluster_tissue_table, margin = 1)  # Normalize by cluster
+cluster_tissue_df <- as.data.frame(cluster_tissue_prop) %>%
+  rename(Cluster = Var1, Tissue = Var2, Proportion = Freq)
+
+# Add absolute counts for labeling
+cluster_tissue_df <- cluster_tissue_df %>%
+  mutate(Label = sprintf("%.1f%%", Proportion * 100))  # Convert to percentage
+
+
+
+# Plot with proportion labels and centered title
+cluster_tissue_table <- table(metadata$combined_clusters, metadata$tissue)
+cluster_tissue_prop <- prop.table(cluster_tissue_table, margin = 1)  # Normalize by cluster
+cluster_tissue_df <- as.data.frame(cluster_tissue_prop) %>%
+  rename(Cluster = Var1, Tissue = Var2, Proportion = Freq)
+
+# Add absolute counts for labeling
+cluster_tissue_df <- cluster_tissue_df %>%
+  mutate(Label = sprintf("%.1f%%", Proportion * 100))  # Convert to percentage
+
+ggplot(cluster_tissue_df, aes(x = Cluster, y = Proportion, fill = Tissue)) +
+  geom_bar(stat = "identity", position = "fill") +  # Stacked bar chart
+  geom_text(
+    aes(label = Label),
+    position = position_stack(vjust = 0.5),  # Position in the middle of each stack
+    size = 3  # Adjust text size
+  ) +
+  theme_minimal() +
+  labs(
+    title = "Proportion of Tissues in Each Cluster",
+    x = "Cluster",
+    y = "Proportion",
+    fill = "Tissue"
+  ) +theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+#Find Markers for each clusters
+Harmonymarkers <- FindAllMarkers(object = Harmony_integrate_seurat,  
+                          only.pos = TRUE,
+                          logfc.threshold = 2,
+                          min.pct = 0.3,
+                          ) 
+Harmony_integrate_seurat$combined_clusters <- factor(Harmony_integrate_seurat$combined_clusters, 
+                                                     levels = c("0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"),
+                                                     labels = c("Memory B Cells", 
+                                                                "Naive/Activated B Cells", 
+                                                                "Plasma Cells", 
+                                                                "CD8+ T Cells", 
+                                                                "CD4+ T Cells (including Tregs)", 
+                                                                "Mural Cells", 
+                                                                "Proliferating Cells", 
+                                                                "Endothelial Cells", 
+                                                                "Mast Cells", 
+                                                                "Mesenchymal Cells", 
+                                                                "Epithelial Cells",
+                                                                "M1 Macrophages", 
+                                                                "M2/Tissue-resident Macrophages"))
+
+#Dot Plot of the Markers for each clusters 
+DotPlot(Harmony_integrate_seurat,features = c(
+                                              "HSPA1B", "HSPA1A","CD69","NR4A2","NR4A1",# Memory B Cells 0
+                                              "CD19","BANK1","CD83","CD37", "MS4A1", "CD79A", #Naive/Activated B Cells 1
+                                              "MZB1","DERL3","XBP1","HSP90B1","TNFRSF17",#Plasma Cells 2
+                                              "CCL5", "GZMA","CD8A","CD8B","CD3D", "CD3E", "CD3G","IL7R","KLRB1",# CD8+ T Cells 3
+                                              "LTB","TNFRSF4","ICOS","CD4",  "GIMAP7", "TNFRSF18",# CD4+ T Cells/Tregs 4
+                                              "MYL9","TAGLN","ACTA2","RGS5", "PDGFRB",  #Mural cells 5
+                                              "TUBB", "SMIM14", "HMGN2", "STMN1", "DUT", "HMGB2", #Proliferating Cells 6
+                                              "RAMP2","PLVAP", "ENG", "AQP1","CLDN5" ,#Endothelial Cells 7
+                                              "TPSAB1","CPA3","HPGDS", "LTC4S","KIT", #Mast Cells 8
+                                              "DCN","LUM", "FBLN1","COL1A1","PDGFRA",#Mesenchymal Cells 9
+                                              "KRT8", "KRT18", "AGR2","FXYD3" ,"TFF1",#Epithelial Cells 10
+                                              "TIMP1","S100A9","G0S2", "SOD2", "IL1RN","CD68",# M1 Macrophage 11
+                                              "C1QA","C1QC","APOE","APOC1","LIPA"  #M2/Tissue-resident Macrophages 12
+                                              
+), group.by = "combined_clusters")+ 
+  coord_flip()+theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+# Extract cluster and tissue information
+cluster_tissue_table <- table(Harmony_integrate_seurat@meta.data$combined_clusters, 
+                              Harmony_integrate_seurat@meta.data$tissue)
+
+# Convert the table to a data frame for easier manipulation
+cluster_tissue_df <- as.data.frame(cluster_tissue_table)
+colnames(cluster_tissue_df) <- c("Cluster", "Tissue", "Count")
+
+# Total cell counts for tumor and normal tissue
+total_cells_per_tissue <- table(Harmony_integrate_seurat@meta.data$tissue)
+
+# Add a normalized count column
+cluster_tissue_df$Normalized_Count <- cluster_tissue_df$Count / 
+  total_cells_per_tissue[cluster_tissue_df$Tissue]
+
+# Calculate total cell count per cluster
+total_cells_per_cluster <- aggregate(Count ~ Cluster, data = cluster_tissue_df, sum)
+
+# Reorder Cluster based on total cell count
+cluster_tissue_df$Cluster <- factor(cluster_tissue_df$Cluster, 
+                                    levels = total_cells_per_cluster$Cluster[order(total_cells_per_cluster$Count, decreasing = TRUE)])
+
+# Ensure Normalized_Count is numeric
+cluster_tissue_df$Normalized_Count <- as.numeric(cluster_tissue_df$Normalized_Count)
+
+# Visualize the normalized cell proportions for each cluster and tissue
+ggplot(cluster_tissue_df, aes(x = Cluster, y = Normalized_Count, fill = Tissue)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  theme_minimal() +
+  labs(title = "Normalized Cell Proportions by Cluster and Tissue",
+       x = "Cluster",
+       y = "Normalized Proportion") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1,size = 12 ))
