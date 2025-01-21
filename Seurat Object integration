@@ -1,0 +1,70 @@
+library(batchelor)
+library(Seurat)
+library(tidyverse)
+library(patchwork)
+library(SeuratWrappers)
+library(ggplot2)
+library(cowplot)
+#Normalization and Scaling before integration
+SCTfiltered_seurat_MAD <- SCTransform(
+  filtered_seurat_MAD,
+  vars.to.regress = c("mitoRatio"),  # Adjust if necessary
+  vst.flavor = "v2"
+)
+
+SCTfiltered_seurat_MAD <- FindVariableFeatures(
+  SCTfiltered_seurat_MAD,  # Your Seurat object
+  assay = "SCT",  # Use SCT assay
+  selection.method = "vst",  # Method for feature selection (e.g., variance-stabilizing transformation)
+  nfeatures = 4000  # Specify the number of features to select (can be adjusted)
+)
+
+#Some integration require PCA before the operation
+SCTfiltered_seurat_MAD <- RunPCA(SCTfiltered_seurat_MAD)
+
+SCTfiltered_seurat_MAD <- FindNeighbors(SCTfiltered_seurat_MAD, dims = 1:20, reduction = "pca")
+SCTfiltered_seurat_MAD <- FindClusters(SCTfiltered_seurat_MAD, resolution = 0.2, cluster.name = "unintegrated_clusters")
+
+set.seed(123456)
+
+SCTfiltered_seurat_MAD <- RunUMAP(SCTfiltered_seurat_MAD, dims = 1:20, reduction = "pca", reduction.name = "umap.unintegrated")
+# visualize by batch and cell type annotation
+# cell type annotations were previously added by Azimuth
+# Create the individual plots
+pA <- DimPlot(SCTfiltered_seurat_MAD, reduction = "umap.unintegrated", group.by = "patient")
+pB <- DimPlot(SCTfiltered_seurat_MAD, reduction = "umap.unintegrated", group.by = "tissue")
+
+# Combine the plots side-by-side
+plot_grid(pA, pB, ncol = 2)
+
+
+SCTfiltered_seurat_MAD[["pca"]]
+str(SCTfiltered_seurat_MAD)
+
+
+#using Harmony to perform integration
+Harmony_integrate_seurat <- RunHarmony(
+  object = SCTfiltered_seurat_MAD, 
+  reduction = "pca",
+  group.by.vars = c("tissue", "patient", "samples"),  # Pass as a vector
+  dims.use = 1:25, 
+  reduction.save = 'runharmony', 
+  plot_convergence = FALSE
+)
+
+Harmony_integrate_seurat <- FindNeighbors(Harmony_integrate_seurat, reduction = "runharmony", dims = 1:25)
+Harmony_integrate_seurat <- FindClusters(Harmony_integrate_seurat, resolution = 0.1, cluster.name = "runharmony_clusters")
+
+set.seed(123456)
+Harmony_integrate_seurat <- RunUMAP(Harmony_integrate_seurat, dims = 1:25, reduction = "runharmony", reduction.name = "umap.runharmony")
+# visualize by batch and cell type annotation
+# cell type annotations were previously added by Azimuth
+# Create the individual plots
+pC <- DimPlot(Harmony_integrate_seurat, reduction = "umap.runharmony", split.by = "patient")
+pD <- DimPlot(Harmony_integrate_seurat, reduction = "umap.runharmony", group.by = "tissue")
+
+# Combine the plots side-by-side
+plot_grid(pC, pD, ncol = 2)
+
+
+
