@@ -1,0 +1,565 @@
+# necessary library for scRNA QC ---------------
+library(ggplot2)
+library(Matrix)
+library(RCurl)
+library(scales)
+library(cowplot)
+library(metap)
+library(ensembldb)
+library(multtest)
+library(glmGamPoi)
+library(sp)
+library(labeling)
+library(stringr)
+library(readr)
+library(magrittr)
+library(dplyr)
+library(htmltools)
+library(AnnotationHub)
+library(Seurat)
+library(tidyverse)
+
+#input the scRNA raw data into R-------------------------
+setwd("C:/Users/diyu6/Desktop/ATMM  project/Protaste cancaer project/protaste cancer analysis/GSE1706031_Data")
+
+##data1_N1S1-----------------------------------
+raw_counts_1<-read.table("C:/Users/diyu6/Desktop/ATMM  project/Protaste cancaer project/protaste cancer analysis/GSE1706031_Data/GSM5353230_PA_PR5249_N1_S1_L001_dge.txt.gz", header = TRUE)
+names(raw_counts_1)[1] <- "GeneID" 
+raw_counts_1 <- data.frame(raw_counts_1[,-1], row.names = raw_counts_1[,1])
+
+##data2_N2S2-----------------------------------------
+raw_counts_2<-read.table("C:/Users/diyu6/Desktop/ATMM  project/Protaste cancaer project/protaste cancer analysis/GSE1706031_Data/GSM5353231_PA_PR5249_N2_S2_L001_dge.txt.gz", header = TRUE) 
+names(raw_counts_2)[1] <- "GeneID" 
+raw_counts_2 <- data.frame(raw_counts_2[,-1], row.names = raw_counts_2[,1])
+
+##data3_T1S3-----------------------------------------
+raw_counts_3<-read.table("C:/Users/diyu6/Desktop/ATMM  project/Protaste cancaer project/protaste cancer analysis/GSE1706031_Data/GSM5353232_PA_PR5249_T1_S3_L001_dge.txt.gz", header = TRUE) 
+names(raw_counts_3)[1] <- "GeneID" 
+raw_counts_3 <- data.frame(raw_counts_3[,-1], row.names = raw_counts_3[,1])
+
+##data4_T2S4-----------------------------------------
+raw_counts_4<-read.table("C:/Users/diyu6/Desktop/ATMM  project/Protaste cancaer project/protaste cancer analysis/GSE1706031_Data/GSM5353233_PA_PR5249_T2_S4_L001_dge.txt.gz", header = TRUE) 
+names(raw_counts_4)[1] <- "GeneID" 
+raw_counts_4 <- data.frame(raw_counts_4[,-1], row.names = raw_counts_4[,1])
+
+##data5_N1S5-----------------------------------------
+raw_counts_5<-read.table("C:/Users/diyu6/Desktop/ATMM  project/Protaste cancaer project/protaste cancer analysis/GSE1706031_Data/GSM5353234_PA_PR5251_N1_S5_L001_dge.txt.gz", header = TRUE) 
+names(raw_counts_5)[1] <- "GeneID" 
+raw_counts_5 <- data.frame(raw_counts_5[,-1], row.names = raw_counts_5[,1])
+
+##data6_N2S6-----------------------------------------
+raw_counts_6<-read.table("C:/Users/diyu6/Desktop/ATMM  project/Protaste cancaer project/protaste cancer analysis/GSE1706031_Data/GSM5353235_PA_PR5251_N2_S6_L001_dge.txt.gz", header = TRUE) 
+names(raw_counts_6)[1] <- "GeneID" 
+raw_counts_6 <- data.frame(raw_counts_6[,-1], row.names = raw_counts_6[,1])
+
+##data7_T1S7-----------------------------------------
+raw_counts_7<-read.table("C:/Users/diyu6/Desktop/ATMM  project/Protaste cancaer project/protaste cancer analysis/GSE1706031_Data/GSM5353236_PA_PR5251_T1_S7_L001_dge.txt.gz", header = TRUE) 
+names(raw_counts_7)[1] <- "GeneID" 
+raw_counts_7 <- data.frame(raw_counts_7[,-1], row.names = raw_counts_7[,1])
+
+##data8_T2S8-----------------------------------------
+raw_counts_8<-read.table("C:/Users/diyu6/Desktop/ATMM  project/Protaste cancaer project/protaste cancer analysis/GSE1706031_Data/GSM5353237_PA_PR5251_T2_S8_L001_dge.txt.gz", header = TRUE) 
+names(raw_counts_8)[1] <- "GeneID" 
+raw_counts_8 <- data.frame(raw_counts_8[,-1], row.names = raw_counts_8[,1])
+
+##data9_N1S13-----------------------------------------
+raw_counts_9<-read.table("C:/Users/diyu6/Desktop/ATMM  project/Protaste cancaer project/protaste cancer analysis/GSE1706031_Data/GSM5353238_PA_PR5254_N1_S13_L001_dge.txt.gz", header = TRUE) 
+names(raw_counts_9)[1] <- "GeneID" 
+raw_counts_9 <- data.frame(raw_counts_9[,-1], row.names = raw_counts_9[,1])
+
+##data10_N2S14-----------------------------------------
+raw_counts_10<-read.table("C:/Users/diyu6/Desktop/ATMM  project/Protaste cancaer project/protaste cancer analysis/GSE1706031_Data/GSM5353239_PA_PR5254_N2_S14_L001_dge.txt.gz", header = TRUE) 
+names(raw_counts_10)[1] <- "GeneID" 
+raw_counts_10 <- data.frame(raw_counts_10[,-1], row.names = raw_counts_10[,1])
+
+##data11_T1S15-----------------------------------------
+raw_counts_11<-read.table("C:/Users/diyu6/Desktop/ATMM  project/Protaste cancaer project/protaste cancer analysis/GSE1706031_Data/GSM5353240_PA_PR5254_T1_S15_L001_dge.txt.gz", header = TRUE) 
+names(raw_counts_11)[1] <- "GeneID" 
+raw_counts_11 <- data.frame(raw_counts_11[,-1], row.names = raw_counts_11[,1])
+
+##data12_N1S21-----------------------------------------
+raw_counts_12<-read.table("C:/Users/diyu6/Desktop/ATMM  project/Protaste cancaer project/protaste cancer analysis/GSE1706031_Data/GSM5353241_PA_PR5261_N1_S21_L002_dge.txt.gz", header = TRUE) 
+names(raw_counts_12)[1] <- "GeneID" 
+raw_counts_12 <- data.frame(raw_counts_12[,-1], row.names = raw_counts_12[,1])
+
+##data13_N2S22-----------------------------------------
+raw_counts_13<-read.table("C:/Users/diyu6/Desktop/ATMM  project/Protaste cancaer project/protaste cancer analysis/GSE1706031_Data/GSM5353242_PA_PR5261_N2_S22_L002_dge.txt.gz", header = TRUE) 
+names(raw_counts_13)[1] <- "GeneID" 
+raw_counts_13 <- data.frame(raw_counts_13[,-1], row.names = raw_counts_13[,1])
+
+##data14_T1S23-----------------------------------------
+raw_counts_14<-read.table("C:/Users/diyu6/Desktop/ATMM  project/Protaste cancaer project/protaste cancer analysis/GSE1706031_Data/GSM5353243_PA_PR5261_T1_S23_L002_dge.txt.gz", header = TRUE) 
+names(raw_counts_14)[1] <- "GeneID" 
+raw_counts_14 <- data.frame(raw_counts_14[,-1], row.names = raw_counts_14[,1])
+
+##data15_T2S24-----------------------------------------
+raw_counts_15<-read.table("C:/Users/diyu6/Desktop/ATMM  project/Protaste cancaer project/protaste cancer analysis/GSE1706031_Data/GSM5353243_PA_PR5261_T1_S23_L002_dge.txt.gz", header = TRUE) 
+names(raw_counts_15)[1] <- "GeneID" 
+raw_counts_15 <- data.frame(raw_counts_15[,-1], row.names = raw_counts_15[,1])
+
+#Feature names cannot have underscores ('_'), replacing with dashes ('-')
+#single change code:rownames(raw_counts_1) <- gsub("_", "-", rownames(raw_counts_1))
+
+for (i in 1:15) {
+  # Dynamically construct object name
+  obj_name <- paste0("raw_counts_", i)
+  
+  # Access the object, modify rownames, and assign back
+  assign(obj_name, {
+    data <- get(obj_name) # Get the object
+    rownames(data) <- gsub("_", "-", rownames(data)) # Replace underscores with dashes
+    data # Return the modified object
+  })
+}
+
+#Manually convert the data to a sparse matrix before passing it to Seurat
+#single change code:raw_counts_1 <- as(as.matrix(raw_counts_1), "dgCMatrix")
+for (i in 1:15) {
+  # Dynamically construct object name
+  obj_name <- paste0("raw_counts_", i)
+  
+  # Access the object, convert it to dgCMatrix, and assign back
+  assign(obj_name, {
+    data <- get(obj_name) # Get the object
+    data <- as(as.matrix(data), "dgCMatrix") # Convert to dgCMatrix
+    data # Return the modified object
+  })
+}
+
+#Manually assign meta-data features to data
+#Feature for data1(GSM5353230)-------------------
+patient_counts_1 <- CreateSeuratObject(counts = raw_counts_1, project = "Patient 7 Normal1", min.cells = 3, 
+                                       min.features = 200) 
+patient_counts_1$patient="Patient7" 
+patient_counts_1$tissue="Normal" 
+patient_counts_1$batch="batch1" 
+patient_counts_1$samples="1" 
+
+#Feature for data2(GSM5353231)-------------------
+patient_counts_2 <- CreateSeuratObject(counts = raw_counts_2, project = "Patient 7 Normal2", min.cells = 3, 
+                                       min.features = 200) 
+patient_counts_2$patient="Patient7" 
+patient_counts_2$tissue="Normal" 
+patient_counts_2$batch="batch1" 
+patient_counts_2$samples="2" 
+
+#Feature for data3(GSM5353232)-------------------
+patient_counts_3 <- CreateSeuratObject(counts = raw_counts_3, project = "Patient 7 Tumor1", min.cells = 3, 
+                                       min.features = 200) 
+patient_counts_3$patient="Patient7" 
+patient_counts_3$tissue="Tumor" 
+patient_counts_3$batch="batch1" 
+patient_counts_3$samples="3"
+
+#Feature for data4(GSM5353233)-------------------
+patient_counts_4 <- CreateSeuratObject(counts = raw_counts_4, project = "Patient 7 Tumor2", min.cells = 3, 
+                                       min.features = 200) 
+patient_counts_4$patient="Patient7" 
+patient_counts_4$tissue="Tumor" 
+patient_counts_4$batch="batch1" 
+patient_counts_4$samples="4"
+
+#Feature for data5(GSM5353234)-------------------
+patient_counts_5 <- CreateSeuratObject(counts = raw_counts_5, project = "Patient 8 Normal1", min.cells = 3, 
+                                       min.features = 200) 
+patient_counts_5$patient="Patient8" 
+patient_counts_5$tissue="Normal"
+patient_counts_5$batch="batch1" 
+patient_counts_5$samples="5"
+
+#Feature for data6(GSM5353235)-------------------
+patient_counts_6 <- CreateSeuratObject(counts = raw_counts_6, project = "Patient 8 Normal2", min.cells = 3, 
+                                       min.features = 200) 
+patient_counts_6$patient="Patient8" 
+patient_counts_6$tissue="Normal"
+patient_counts_6$batch="batch1" 
+patient_counts_6$samples="6"
+
+#Feature for data7(GSM5353236)-------------------
+patient_counts_7 <- CreateSeuratObject(counts = raw_counts_7, project = "Patient 8 Tumor1", min.cells = 3, 
+                                       min.features = 200) 
+patient_counts_7$patient="Patient8" 
+patient_counts_7$tissue="Tumor"
+patient_counts_7$batch="batch1" 
+patient_counts_7$samples="7"
+
+#Feature for data8(GSM5353237)-------------------
+patient_counts_8 <- CreateSeuratObject(counts = raw_counts_8, project = "Patient 8 Tumor2", min.cells = 3, 
+                                       min.features = 200) 
+patient_counts_8$patient="Patient8" 
+patient_counts_8$tissue="Tumor"
+patient_counts_8$batch="batch1" 
+patient_counts_8$samples="8"
+
+#Feature for data9(GSM5353238)-------------------
+patient_counts_9 <- CreateSeuratObject(counts = raw_counts_9, project = "Patient 9 Normal1", min.cells = 3, 
+                                       min.features = 200) 
+patient_counts_9$patient="Patient9" 
+patient_counts_9$tissue="Normal"
+patient_counts_9$batch="batch1" 
+patient_counts_9$samples="13"
+
+#Feature for data10(GSM5353239)-------------------
+patient_counts_10 <- CreateSeuratObject(counts = raw_counts_10, project = "Patient 9 Normal2", min.cells = 3, 
+                                       min.features = 200) 
+patient_counts_10$patient="Patient9" 
+patient_counts_10$tissue="Normal"
+patient_counts_10$batch="batch1" 
+patient_counts_10$samples="14"
+
+#Feature for data11(GSM5353240)-------------------
+patient_counts_11 <- CreateSeuratObject(counts = raw_counts_11, project = "Patient 9 Tumor1", min.cells = 3, 
+                                        min.features = 200) 
+patient_counts_11$patient="Patient9" 
+patient_counts_11$tissue="Tumor"
+patient_counts_11$batch="batch1" 
+patient_counts_11$samples="15"
+
+#Feature for data12(GSM5353241)-------------------
+patient_counts_12 <- CreateSeuratObject(counts = raw_counts_12, project = "Patient 10 Normal1", min.cells = 3, 
+                                        min.features = 200) 
+patient_counts_12$patient="Patient10" 
+patient_counts_12$tissue="Normal"
+patient_counts_12$batch="batch1" 
+patient_counts_12$samples="21"
+
+#Feature for data13(GSM5353242)-------------------
+patient_counts_13 <- CreateSeuratObject(counts = raw_counts_13, project = "Patient 10 Normal2", min.cells = 3, 
+                                        min.features = 200) 
+patient_counts_13$patient="Patient10" 
+patient_counts_13$tissue="Normal"
+patient_counts_13$batch="batch1" 
+patient_counts_13$samples="22"
+
+#Feature for data14(GSM5353243)-------------------
+patient_counts_14 <- CreateSeuratObject(counts = raw_counts_14, project = "Patient 10 Tumor1", min.cells = 3, 
+                                        min.features = 200) 
+patient_counts_14$patient="Patient10" 
+patient_counts_14$tissue="Tumor"
+patient_counts_14$batch="batch1" 
+patient_counts_14$samples="23"
+
+#Feature for data15(GSM5353244)-------------------
+patient_counts_15 <- CreateSeuratObject(counts = raw_counts_15, project = "Patient 10 Tumor2", min.cells = 3, 
+                                        min.features = 200) 
+patient_counts_15$patient="Patient10" 
+patient_counts_15$tissue="Tumor"
+patient_counts_15$batch="batch1" 
+patient_counts_15$samples="24"
+
+
+#Merge Seurat objects.  
+# List of Seurat objects
+seurat_objects <- list(
+  patient_counts_1, patient_counts_2, patient_counts_3, 
+  patient_counts_4, patient_counts_5, patient_counts_6,
+  patient_counts_7, patient_counts_8, patient_counts_9,
+  patient_counts_10, patient_counts_11, patient_counts_12,
+  patient_counts_13, patient_counts_14, patient_counts_15
+)
+
+# Manually specify cell IDs based on tumor (T) or normal (N) for each sample
+cell_ids <- c(
+  "P7N1", "P7N2", "P7T1", "P7T2", "P8N1", "P8N2", 
+  "P8T1", "P8T2", "P9N1", "P9N2", "P9T1", "P10N1", 
+  "P10N2", "P10T1", "P10T2"
+)
+
+# Merge Seurat objects
+merged_seurat <- merge(
+  x = seurat_objects[[1]], 
+  y = seurat_objects[-1], # All remaining objects
+  add.cell.ids = cell_ids, 
+  project = "All_Prostate"
+)
+
+# Concatenate the count matrices of both samples together
+merged_seurat <- JoinLayers(merged_seurat)   
+
+# Check that the merged object has the appropriate sample-specific prefixes
+head(merged_seurat@meta.data)
+tail(merged_seurat@meta.data)
+
+# Explore merged metadata
+View(merged_seurat@meta.data)
+
+# Add number of genes per UMI for each cell to metadata
+merged_seurat$log10GenesPerUMI <- log10(merged_seurat$nFeature_RNA) / log10(merged_seurat$nCount_RNA)
+
+# Compute percent mito ratio
+merged_seurat$mitoRatio <- PercentageFeatureSet(object = merged_seurat, pattern = "^MT-")
+merged_seurat$mitoRatio <- merged_seurat@meta.data$mitoRatio / 100
+
+# Create metadata dataframe
+metadata <- merged_seurat@meta.data
+
+# Add cell IDs to metadata
+metadata$cells <- rownames(metadata)
+
+# Rename columns
+metadata <- metadata %>%
+  dplyr::rename(seq_folder = orig.ident,
+                nUMI = nCount_RNA,
+                nGene = nFeature_RNA)
+
+# Add metadata back to Seurat object
+merged_seurat@meta.data <- metadata
+
+if (!dir.exists("data")) {
+  dir.create("data")
+}
+
+# Create .RData object to load at any time
+save(merged_seurat, file="data/merged_filtered_seurat.RData")
+
+# Visualize the number of cell counts per sample
+metadata %>%
+  ggplot(aes(x = tissue, fill = tissue)) + 
+  geom_bar() +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold")) +
+  ggtitle("NCells") +
+  geom_text(stat = 'count', aes(label = ..count..), vjust = -0.5, size = 4)
+
+# Visualize the number UMIs/transcripts per cell
+metadata %>% 
+  ggplot(aes(color=tissue, x=nUMI, fill= tissue)) + 
+  geom_density(alpha = 0.2) + 
+  scale_x_log10() + 
+  theme_classic() +
+  ylab("Cell density") +
+  geom_vline(xintercept = 500)
+
+# Visualize the distribution of genes detected per cell via histogram
+metadata %>% 
+  ggplot(aes(color=tissue, x=nGene, fill= tissue)) + 
+  geom_density(alpha = 0.2) + 
+  theme_classic() +
+  scale_x_log10() + 
+  geom_vline(xintercept = 300)
+
+# Visualize the overall complexity of the gene expression by visualizing the genes detected per UMI (novelty score)
+metadata %>%
+  ggplot(aes(x=log10GenesPerUMI, color = tissue, fill=tissue)) +
+  geom_density(alpha = 0.2) +
+  theme_classic() +
+  geom_vline(xintercept = 0.8)
+
+# Visualize the distribution of mitochondrial gene expression detected per cell
+metadata %>% 
+  ggplot(aes(color=tissue, x=mitoRatio, fill=tissue)) + 
+  geom_density(alpha = 0.2) + 
+  scale_x_log10() + 
+  theme_classic() +
+  geom_vline(xintercept = 0.2)
+
+# Visualize QC metrics as a violin plot
+VlnPlot(seurat_phase, 
+        features = c("nFeature_RNA", "nCount_RNA", "mitoRatio"), 
+        ncol = 3, 
+        split.by = "tissue")
+
+# Visualize the correlation between genes detected and number of UMIs and determine whether strong presence of cells with low numbers of genes/UMIs
+metadata %>% 
+  ggplot(aes(x=nUMI, y=nGene, color=mitoRatio)) + 
+  geom_point() + 
+  scale_colour_gradient(low = "gray90", high = "black") +
+  stat_smooth(method=lm) +
+  scale_x_log10() + 
+  scale_y_log10() + 
+  theme_classic() +
+  geom_vline(xintercept = 500) +
+  geom_hline(yintercept = 250) +
+  facet_wrap(~tissue)
+
+metadata %>% 
+  ggplot(aes(x = nUMI, y = nGene, color = mitoRatio)) + 
+  geom_point() + 
+  scale_colour_gradient(low = "gray90", high = "black") + 
+  stat_smooth(aes(group = 1), method = "lm", se = FALSE, color = "blue") + 
+  scale_x_log10() + 
+  scale_y_log10() + 
+  theme_classic() + 
+  geom_vline(xintercept = 500, linetype = "dashed", color = "red") + 
+  geom_hline(yintercept = 250, linetype = "dashed", color = "red") + 
+  facet_wrap(~tissue) +
+  labs(
+    title = "Correlation between nUMI and nGene",
+    x = "Number of UMIs (log10)",
+    y = "Number of Genes (log10)",
+    color = "Mito Ratio"
+  )
+######----------------------------------------------------------
+# Define custom filtering function using MAD
+
+# Define a custom filtering function using MAD for the individual metrics
+filter_cells_by_mad_individual <- function(merged_seurat, threshold_factor = 3) {
+  
+  # List of metrics to filter by
+  metrics <- c("nGene", "nUMI", "mitoRatio")
+  
+  # Loop over each metric to apply MAD filtering separately
+  for (metric in metrics) {
+    
+    # Extract the values for the current metric
+    values <- merged_seurat@meta.data[[metric]]
+    
+    # Calculate the MAD for the metric
+    metric_mad <- mad(values)
+    metric_median <- median(values)
+    
+    # Calculate the lower and upper thresholds based on MAD
+    lower_limit <- metric_median - threshold_factor * metric_mad
+    upper_limit <- metric_median + threshold_factor * metric_mad
+    
+    # Filter cells based on the MAD threshold
+    cells_to_keep <- which(values >= lower_limit & values <= upper_limit)
+    
+    # Update the Seurat object with only the cells that meet the criteria
+    merged_seurat <- merged_seurat[, cells_to_keep]
+    
+    cat(paste("Filtering", metric, "with MAD threshold:", lower_limit, "to", upper_limit, "\n"))
+  }
+  
+  # Return the filtered Seurat object
+  return(merged_seurat)
+}
+
+# Apply the filtering function to the Seurat object
+filtered_seurat_MAD <- filter_cells_by_mad_individual(merged_seurat, threshold_factor = 3)
+
+colnames(merged_seurat@meta.data)
+
+# Before filtering: Plot density plots for nGene, nUMI, mitoRatio
+ggplot(merged_seurat@meta.data, aes(x = nGene, colour = tissue, fill = tissue)) + 
+  geom_density(alpha = 0.4) + 
+  theme_minimal() + 
+  ggtitle("Density Plot of nGene (Before Filtering)") + 
+  theme(plot.title = element_text(hjust = 0.5))
+
+ggplot(merged_seurat@meta.data, aes(x = nUMI, colour = tissue, fill = tissue)) + 
+  geom_density(alpha = 0.4) + 
+  theme_minimal() + 
+  ggtitle("Density Plot of nUMI (Before Filtering)") + 
+  theme(plot.title = element_text(hjust = 0.5))
+
+ggplot(merged_seurat@meta.data, aes(x = mitoRatio,colour = tissue, fill = tissue)) + 
+  geom_density(alpha = 0.4) + 
+  theme_minimal() + 
+  ggtitle("Density Plot of mitoRatio (Before Filtering)") + 
+  theme(plot.title = element_text(hjust = 0.5))
+
+table(merged_seurat@meta.data$tissue)
+table(merged_seurat@meta.data$nGene)
+# 3. Visualize the data after filtering
+# After filtering: Plot density plots for nGene, nUMI, mitoRatio by MAD
+ggplot(filtered_seurat_MAD@meta.data, aes(x = nGene, colour = tissue, fill = tissue)) + 
+  geom_density(alpha = 0.4) + 
+  theme_minimal() + 
+  ggtitle("Density Plot of nGene (After Filtering by MAD)") + 
+  theme(plot.title = element_text(hjust = 0.5))
+
+ggplot(filtered_seurat_MAD@meta.data, aes(x = nUMI, colour = tissue, fill = tissue)) + 
+  geom_density(alpha = 0.4) + 
+  theme_minimal() + 
+  ggtitle("Density Plot of nUMI (After Filtering by MAD)") + 
+  theme(plot.title = element_text(hjust = 0.5))
+
+ggplot(filtered_seurat_MAD@meta.data, aes(x = mitoRatio,colour = tissue, fill = tissue)) + 
+  geom_density( alpha = 0.4) + 
+  theme_minimal() + 
+  ggtitle("Density Plot of mitoRatio (After Filtering by MAD)") + 
+  theme(plot.title = element_text(hjust = 0.5))
+table(filtered_seurat_MAD@meta.data$tissue)
+# Filter out low quality cells using selected thresholds - these will change with experiment
+filtered_seurat_Manual <- subset(x = merged_seurat, 
+                          subset= (nUMI >= 500) & 
+                            (nGene >= 250) & 
+                            (log10GenesPerUMI > 0.80) & 
+                            (mitoRatio < 0.20))
+table(filtered_seurat_Manual@meta.data$tissue)
+
+#Examine the feature differences before and after filtration
+n_features<- nrow(merged_seurat)
+print(n_features)
+n_features_MAD<- nrow(filtered_seurat_MAD)
+print(n_features_MAD)
+n_features_Manual<- nrow(filtered_seurat_Manual)
+print(n_features_Manual)
+# After filtering: Plot density plots for nGene, nUMI, mitoRatio by Manual
+ggplot(filtered_seurat_Manual@meta.data, aes(x = nGene, colour = tissue, fill = tissue)) + 
+  geom_density(alpha = 0.4) + 
+  theme_minimal() + 
+  ggtitle("Density Plot of nGene (After Filtering by Manual)") + 
+  theme(plot.title = element_text(hjust = 0.5))
+
+ggplot(filtered_seurat_Manual@meta.data, aes(x = nUMI, colour = tissue, fill = tissue)) + 
+  geom_density(alpha = 0.4) + 
+  theme_minimal() + 
+  ggtitle("Density Plot of nUMI (After Filtering by Manual)") + 
+  theme(plot.title = element_text(hjust = 0.5))
+
+ggplot(filtered_seurat_Manual@meta.data, aes(x = mitoRatio,colour = tissue, fill = tissue)) + 
+  geom_density( alpha = 0.4) + 
+  theme_minimal() + 
+  ggtitle("Density Plot of mitoRatio (After Filtering by Manual)") + 
+  theme(plot.title = element_text(hjust = 0.5))
+
+
+#Doing the following steps using MAD filteration
+#CountsMAD<- GetAssayData(object = filtered_seurat_MAD, layer = "counts")
+# Get the raw count data from the filtered Seurat object
+CountsMAD <- GetAssayData(object = filtered_seurat_MAD, assay = "RNA", layer = "counts")
+
+# Output a logical matrix specifying for each gene whether or not there are more than zero counts per cell
+nonzeroMAD <- CountsMAD > 0
+
+# Sum all TRUE values and return TRUE if more than 10 TRUE values per gene
+keep_genes_MAD <- Matrix::rowSums(nonzeroMAD) >= 10
+
+# Only keeping those genes expressed in more than 10 cells
+filtered_counts_MAD <- CountsMAD[keep_genes_MAD, ]
+
+# Check the number of genes remaining after filtering
+num_genes_remaining_MAD <- dim(filtered_counts_MAD)[1]
+
+# Print the number of genes
+print(num_genes_remaining_MAD)
+
+# Reassign to filtered Seurat object
+filtered_seurat_MAD <- CreateSeuratObject(filtered_counts_MAD, meta.data = filtered_seurat_MAD@meta.data)
+# Create .RData object to load at any time
+save(filtered_seurat_MAD, file="data/seurat_filtered_MAD.RData")
+
+# Extract counts
+counts <- GetAssayData(object = filtered_seurat, layer = "counts")
+
+# Count the number of cells for each sample
+filtered_cell_counts <- table(object = filtered_seurat@meta.data$tissue)
+
+
+
+# Print the result
+print(filtered_cell_counts)
+
+# Output a logical matrix specifying for each gene on whether or not there are more than zero counts per cell
+nonzero <- counts > 0
+
+# Sums all TRUE values and returns TRUE if more than 10 TRUE values per gene
+keep_genes <- Matrix::rowSums(nonzero) >= 10
+
+# Only keeping those genes expressed in more than 10 cells
+filtered_counts <- counts[keep_genes, ]
+
+# Check the number of genes remaining after filtering
+num_genes_remaining <- dim(filtered_counts)[1]
+
+# Print the number of genes
+print(num_genes_remaining)
+
+# Reassign to filtered Seurat object
+filtered_seurat <- CreateSeuratObject(filtered_counts, meta.data = filtered_seurat@meta.data)
+
+# Create .RData object to load at any time
+save(filtered_seurat, file="data/seurat_filtered.RData")
